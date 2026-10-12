@@ -1,0 +1,13 @@
+{
+  "engines": { "node": ">=22.18" },
+  "name": "json-parser",
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^5.8.0"
+  }
+}
