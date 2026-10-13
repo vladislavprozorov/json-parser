@@ -7,9 +7,12 @@ export function parse(text: string, options?: ParseOptions): JSONValue {
 }
 
 export { JSONParseError } from "./errors.ts";
-export type { JSONValue } from "./types.ts";
+export { DEFAULT_MAX_DEPTH } from "./options.ts";
+export type { JSONValue, JSONArray, JSONObject } from "./types.ts";
 export type {
   ParseOptions,
   LargeIntegerMode,
   LoneSurrogateMode,
+  ProtoKeyMode,
+  DuplicateKeyMode,
 } from "./options.ts";
