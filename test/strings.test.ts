@@ -13,9 +13,9 @@ test("valid strings match JSON.parse exactly", () => {
     '"\\u0041\\u00e9\\u00E9"',
     '"\\u0000"',
     '"\\u001f"',
-    '"\\uD83D\\uDE00"', // суррогатная пара → 😀
+    '"\\uD83D\\uDE00"',
     '"\\ud83d\\ude00"',
-    '"\u007f"', // DEL не управляющий для JSON
+    '"\u007f"',
     '"text \\u0041 text"',
   ];
   for (const input of cases) {
@@ -43,7 +43,7 @@ test("rejects invalid strings", () => {
     '"\\u12"',
     '"\\u12G4"',
     '"\\u{41}"',
-    '"a\nb"', // сырой перевод строки
+    '"a\nb"',
     '"a\tb"',
     '"\u0000"',
     '"\u001f"',
@@ -81,7 +81,7 @@ test("lone surrogates: default mode keeps them like JSON.parse", () => {
   const cases = [
     '"\\uD800"',
     '"\\uDC00"',
-    '"\\uDE00\\uD83D"', // пара в обратном порядке
+    '"\\uDE00\\uD83D"',
     '"\\uD83Dx"',
     '"\\uD83D\\u0041"',
     '"\\uD800\\uD800\\uDC00"',
@@ -97,7 +97,7 @@ test("lone surrogates: replace mode", () => {
   assert.equal(parse('"a\\uDC00b"', opts), "a�b");
   assert.equal(parse('"\\uD83D\\u0041"', opts), "�A");
   assert.equal(parse('"\\uD800\\uD83D\\uDE00"', opts), "�😀");
-  assert.equal(parse('"\\uD83D\\uDE00"', opts), "😀"); // пара не трогается
+  assert.equal(parse('"\\uD83D\\uDE00"', opts), "😀");
 });
 
 test("lone surrogates: error mode", () => {
