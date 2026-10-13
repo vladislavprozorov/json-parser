@@ -1,6 +1,7 @@
 import type { Builder } from "./builders/builder.ts";
 import type { ResolvedOptions } from "./options.ts";
-import { JSONParseError } from "./errors.ts";
+import { JSONParseError, ParseFailure } from "./errors.ts";
+import type { PathSegment } from "./path.ts";
 import {
   CH_COLON,
   CH_COMMA,
@@ -18,6 +19,7 @@ export class Parser<Value, ArrayState, ObjectState> {
   private readonly options: ResolvedOptions;
   private pos = 0;
   private depth = 0;
+  private readonly path: PathSegment[] = [];
 
   constructor(
     text: string,
@@ -30,8 +32,24 @@ export class Parser<Value, ArrayState, ObjectState> {
   }
 
   parse(): Value {
+    try {
+      return this.parseDocument();
+    } catch (error) {
+      if (error instanceof ParseFailure) {
+        throw new JSONParseError(
+          error.message,
+          this.text,
+          error.position,
+          this.path.slice(),
+        );
+      }
+      throw error;
+    }
+  }
+
+  private parseDocument(): Value {
     if (this.text.length > this.options.maxLength) {
-      throw this.error(
+      throw this.fail(
         `Input length ${this.text.length} exceeds maxLength of ${this.options.maxLength}`,
         this.options.maxLength,
       );
@@ -40,7 +58,7 @@ export class Parser<Value, ArrayState, ObjectState> {
     const value = this.parseValue();
     this.skipWhitespace();
     if (this.pos < this.text.length) {
-      throw this.error(`Unexpected ${this.describeCurrent()} after JSON value`);
+      throw this.fail(`Unexpected ${this.describeCurrent()} after JSON value`);
     }
     return value;
   }
@@ -73,9 +91,9 @@ export class Parser<Value, ArrayState, ObjectState> {
       case "9":
         return this.parseNumber();
       case undefined:
-        throw this.error("Unexpected end of input");
+        throw this.fail("Unexpected end of input");
       default:
-        throw this.error(`Unexpected ${this.describeCurrent()}`);
+        throw this.fail(`Unexpected ${this.describeCurrent()}`);
     }
   }
 
@@ -85,9 +103,11 @@ export class Parser<Value, ArrayState, ObjectState> {
     if (this.text.charCodeAt(this.pos) === CH_RBRACKET) {
       return this.builder.endArray(array, this.leave());
     }
-    for (;;) {
+    for (let index = 0; ; index++) {
       this.skipWhitespace();
+      this.path.push(index);
       this.builder.addElement(array, this.parseValue());
+      this.path.pop();
       this.skipWhitespace();
       const c = this.text.charCodeAt(this.pos);
       if (c === CH_COMMA) {
@@ -95,7 +115,7 @@ export class Parser<Value, ArrayState, ObjectState> {
       } else if (c === CH_RBRACKET) {
         return this.builder.endArray(array, this.leave());
       } else {
-        throw this.error(
+        throw this.fail(
           `Expected "," or "]" in array, got ${this.describeCurrent()}`,
         );
       }
@@ -111,22 +131,27 @@ export class Parser<Value, ArrayState, ObjectState> {
     for (;;) {
       this.skipWhitespace();
       if (this.text.charCodeAt(this.pos) !== CH_QUOTE) {
-        throw this.error(
+        throw this.fail(
           `Expected string key in object, got ${this.describeCurrent()}`,
         );
       }
       const keyStart = this.pos;
       const key = this.scanString();
+      this.path.push(key.value);
+      const accepted = this.acceptKey(object, key.value, keyStart);
       this.skipWhitespace();
       if (this.text.charCodeAt(this.pos) !== CH_COLON) {
-        throw this.error(
+        throw this.fail(
           `Expected ":" after object key, got ${this.describeCurrent()}`,
         );
       }
       this.pos++;
       this.skipWhitespace();
       const value = this.parseValue();
-      this.addMember(object, key.value, keyStart, key.end, value);
+      this.path.pop();
+      if (accepted) {
+        this.builder.setProperty(object, key.value, keyStart, key.end, value);
+      }
       this.skipWhitespace();
       const c = this.text.charCodeAt(this.pos);
       if (c === CH_COMMA) {
@@ -134,42 +159,40 @@ export class Parser<Value, ArrayState, ObjectState> {
       } else if (c === CH_RBRACE) {
         return this.builder.endObject(object, this.leave());
       } else {
-        throw this.error(
+        throw this.fail(
           `Expected "," or "}" in object, got ${this.describeCurrent()}`,
         );
       }
     }
   }
 
-  private addMember(
+  private acceptKey(
     object: ObjectState,
     key: string,
     keyStart: number,
-    keyEnd: number,
-    value: Value,
-  ): void {
+  ): boolean {
     if (key === "__proto__") {
       switch (this.options.protoKey) {
         case "ignore":
-          return;
+          return false;
         case "error":
-          throw this.error('Forbidden key "__proto__"', keyStart);
+          throw this.fail('Forbidden key "__proto__"', keyStart);
       }
     }
     if (this.builder.hasKey(object, key)) {
       switch (this.options.duplicateKeys) {
         case "first":
-          return;
+          return false;
         case "error":
-          throw this.error(`Duplicate key ${JSON.stringify(key)}`, keyStart);
+          throw this.fail(`Duplicate key ${JSON.stringify(key)}`, keyStart);
       }
     }
-    this.builder.setProperty(object, key, keyStart, keyEnd, value);
+    return true;
   }
 
   private enter(): number {
     if (this.depth >= this.options.maxDepth) {
-      throw this.error(
+      throw this.fail(
         `Maximum nesting depth of ${this.options.maxDepth} exceeded`,
       );
     }
@@ -209,7 +232,7 @@ export class Parser<Value, ArrayState, ObjectState> {
 
   private parseLiteral(word: string, value: boolean | null): Value {
     if (!this.text.startsWith(word, this.pos)) {
-      throw this.error(`Invalid literal, expected "${word}"`);
+      throw this.fail(`Invalid literal, expected "${word}"`);
     }
     const start = this.pos;
     this.pos += word.length;
@@ -229,7 +252,7 @@ export class Parser<Value, ArrayState, ObjectState> {
     return `character U+${code.toString(16).toUpperCase().padStart(4, "0")}`;
   }
 
-  private error(message: string, position = this.pos): JSONParseError {
-    return new JSONParseError(message, this.text, position);
+  private fail(message: string, position = this.pos): ParseFailure {
+    return new ParseFailure(message, position);
   }
 }
