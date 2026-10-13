@@ -21,7 +21,6 @@ export interface ScannedString {
   value: string;
 }
 
-// start указывает на открывающую кавычку
 export function scanString(
   text: string,
   start: number,
@@ -40,7 +39,6 @@ export function scanString(
     }
 
     if (c === CH_BACKSLASH) {
-      // обычные символы копируем кусками, а не по одному
       value += text.slice(chunkStart, pos);
       const escapeStart = pos;
       const e = text.charCodeAt(pos + 1);
@@ -74,7 +72,6 @@ export function scanString(
           const code = readHex4(text, pos);
           pos += 4;
           if (isHighSurrogate(code)) {
-            // ищем пару \uDC00–\uDFFF сразу за старшей половиной
             if (
               text.charCodeAt(pos) === CH_BACKSLASH &&
               text.charCodeAt(pos + 1) === CH_LOWER_U
