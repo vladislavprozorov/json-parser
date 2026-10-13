@@ -5,6 +5,8 @@ import type { PathSegment } from "./path.ts";
 import {
   CH_COLON,
   CH_COMMA,
+  CH_LBRACE,
+  CH_LBRACKET,
   CH_RBRACE,
   CH_RBRACKET,
   CH_SLASH,
@@ -24,6 +26,25 @@ import {
   type ScannedString,
   type StringSyntax,
 } from "./scanner/string.ts";
+
+interface ArrayFrame<ArrayState> {
+  readonly kind: "array";
+  readonly state: ArrayState;
+  index: number;
+}
+
+interface ObjectFrame<ObjectState> {
+  readonly kind: "object";
+  readonly state: ObjectState;
+  key: string;
+  keyStart: number;
+  keyEnd: number;
+  accepted: boolean;
+}
+
+type Frame<ArrayState, ObjectState> =
+  | ArrayFrame<ArrayState>
+  | ObjectFrame<ObjectState>;
 
 export class Parser<Value, ArrayState, ObjectState> {
   private readonly text: string;
@@ -83,12 +104,122 @@ export class Parser<Value, ArrayState, ObjectState> {
   }
 
   private parseValue(): Value {
-    const ch = this.text[this.pos];
-    switch (ch) {
-      case "{":
-        return this.parseObject();
-      case "[":
-        return this.parseArray();
+    const stack: Frame<ArrayState, ObjectState>[] = [];
+    for (;;) {
+      let value: Value;
+      switch (this.text.charCodeAt(this.pos)) {
+        case CH_LBRACKET: {
+          const array = this.builder.startArray(this.enter());
+          this.skipWhitespace();
+          if (this.text.charCodeAt(this.pos) !== CH_RBRACKET) {
+            stack.push({ kind: "array", state: array, index: 0 });
+            this.path.push(0);
+            continue;
+          }
+          value = this.builder.endArray(array, this.leave());
+          break;
+        }
+        case CH_LBRACE: {
+          const object = this.builder.startObject(this.enter());
+          this.skipWhitespace();
+          if (this.text.charCodeAt(this.pos) !== CH_RBRACE) {
+            const frame: ObjectFrame<ObjectState> = {
+              kind: "object",
+              state: object,
+              key: "",
+              keyStart: 0,
+              keyEnd: 0,
+              accepted: false,
+            };
+            this.readMemberHead(frame);
+            stack.push(frame);
+            continue;
+          }
+          value = this.builder.endObject(object, this.leave());
+          break;
+        }
+        default:
+          value = this.parseScalar();
+      }
+
+      for (;;) {
+        const frame = stack[stack.length - 1];
+        if (frame === undefined) return value;
+        this.path.pop();
+        if (frame.kind === "array") {
+          this.builder.addElement(frame.state, value);
+          if (this.nextElement(frame)) break;
+          value = this.builder.endArray(frame.state, this.leave());
+        } else {
+          if (frame.accepted) {
+            this.builder.setProperty(
+              frame.state,
+              frame.key,
+              frame.keyStart,
+              frame.keyEnd,
+              value,
+            );
+          }
+          if (this.nextMember(frame)) break;
+          value = this.builder.endObject(frame.state, this.leave());
+        }
+        stack.pop();
+      }
+    }
+  }
+
+  private nextElement(frame: ArrayFrame<ArrayState>): boolean {
+    this.skipWhitespace();
+    const c = this.text.charCodeAt(this.pos);
+    if (c === CH_RBRACKET) return false;
+    if (c !== CH_COMMA) {
+      throw this.fail(
+        `Expected "," or "]" in array, got ${this.describeCurrent()}`,
+      );
+    }
+    this.pos++;
+    if (this.closesAfterComma(CH_RBRACKET)) return false;
+    this.path.push(++frame.index);
+    this.skipWhitespace();
+    return true;
+  }
+
+  private nextMember(frame: ObjectFrame<ObjectState>): boolean {
+    this.skipWhitespace();
+    const c = this.text.charCodeAt(this.pos);
+    if (c === CH_RBRACE) return false;
+    if (c !== CH_COMMA) {
+      throw this.fail(
+        `Expected "," or "}" in object, got ${this.describeCurrent()}`,
+      );
+    }
+    this.pos++;
+    if (this.closesAfterComma(CH_RBRACE)) return false;
+    this.skipWhitespace();
+    this.readMemberHead(frame);
+    return true;
+  }
+
+  private readMemberHead(frame: ObjectFrame<ObjectState>): void {
+    const keyStart = this.pos;
+    const key = this.scanKey();
+    this.path.push(key.value);
+    frame.accepted = this.acceptKey(frame.state, key.value, keyStart);
+    frame.key = key.value;
+    frame.keyStart = keyStart;
+    frame.keyEnd = key.end;
+    this.skipWhitespace();
+    if (this.text.charCodeAt(this.pos) !== CH_COLON) {
+      throw this.fail(
+        `Expected ":" after object key, got ${this.describeCurrent()}`,
+      );
+    }
+    this.pos++;
+    this.skipWhitespace();
+  }
+
+  private parseScalar(): Value {
+    switch (this.text[this.pos]) {
       case '"':
         return this.parseString();
       case "'":
@@ -125,76 +256,6 @@ export class Parser<Value, ArrayState, ObjectState> {
 
   private unexpected(): never {
     throw this.fail(`Unexpected ${this.describeCurrent()}`);
-  }
-
-  private parseArray(): Value {
-    const array = this.builder.startArray(this.enter());
-    this.skipWhitespace();
-    if (this.text.charCodeAt(this.pos) === CH_RBRACKET) {
-      return this.builder.endArray(array, this.leave());
-    }
-    for (let index = 0; ; index++) {
-      this.skipWhitespace();
-      this.path.push(index);
-      this.builder.addElement(array, this.parseValue());
-      this.path.pop();
-      this.skipWhitespace();
-      const c = this.text.charCodeAt(this.pos);
-      if (c === CH_COMMA) {
-        this.pos++;
-        if (this.closesAfterComma(CH_RBRACKET)) {
-          return this.builder.endArray(array, this.leave());
-        }
-      } else if (c === CH_RBRACKET) {
-        return this.builder.endArray(array, this.leave());
-      } else {
-        throw this.fail(
-          `Expected "," or "]" in array, got ${this.describeCurrent()}`,
-        );
-      }
-    }
-  }
-
-  private parseObject(): Value {
-    const object = this.builder.startObject(this.enter());
-    this.skipWhitespace();
-    if (this.text.charCodeAt(this.pos) === CH_RBRACE) {
-      return this.builder.endObject(object, this.leave());
-    }
-    for (;;) {
-      this.skipWhitespace();
-      const keyStart = this.pos;
-      const key = this.scanKey();
-      this.path.push(key.value);
-      const accepted = this.acceptKey(object, key.value, keyStart);
-      this.skipWhitespace();
-      if (this.text.charCodeAt(this.pos) !== CH_COLON) {
-        throw this.fail(
-          `Expected ":" after object key, got ${this.describeCurrent()}`,
-        );
-      }
-      this.pos++;
-      this.skipWhitespace();
-      const value = this.parseValue();
-      this.path.pop();
-      if (accepted) {
-        this.builder.setProperty(object, key.value, keyStart, key.end, value);
-      }
-      this.skipWhitespace();
-      const c = this.text.charCodeAt(this.pos);
-      if (c === CH_COMMA) {
-        this.pos++;
-        if (this.closesAfterComma(CH_RBRACE)) {
-          return this.builder.endObject(object, this.leave());
-        }
-      } else if (c === CH_RBRACE) {
-        return this.builder.endObject(object, this.leave());
-      } else {
-        throw this.fail(
-          `Expected "," or "}" in object, got ${this.describeCurrent()}`,
-        );
-      }
-    }
   }
 
   private acceptKey(
