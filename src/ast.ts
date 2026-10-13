@@ -1,8 +1,10 @@
+import type { SourceLocation } from "./location.ts";
 import type { NumberValue } from "./types.ts";
 
 interface NodeBase {
   readonly start: number;
   readonly end: number;
+  readonly loc: SourceLocation;
 }
 
 export interface NullNode extends NodeBase {
