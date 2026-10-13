@@ -1,6 +1,6 @@
 import type { ValueNode } from "./ast.ts";
 import type { Builder } from "./builders/builder.ts";
-import { astBuilder } from "./builders/ast-builder.ts";
+import { createAstBuilder } from "./builders/ast-builder.ts";
 import { valueBuilder } from "./builders/value-builder.ts";
 import { resolveOptions, type ParseOptions } from "./options.ts";
 import { Parser } from "./parser.ts";
@@ -11,7 +11,7 @@ export function parse(text: string, options?: ParseOptions): JSONValue {
 }
 
 export function parseAst(text: string, options?: ParseOptions): ValueNode {
-  return parseWith(text, astBuilder, options);
+  return parseWith(text, createAstBuilder(text), options);
 }
 
 export function parseWith<Value, ArrayState, ObjectState>(
@@ -24,6 +24,10 @@ export function parseWith<Value, ArrayState, ObjectState>(
 
 export { JSONParseError } from "./errors.ts";
 export { DEFAULT_MAX_DEPTH } from "./options.ts";
+export { LineIndex } from "./location.ts";
+export { formatPath } from "./path.ts";
+export type { Position, SourceLocation } from "./location.ts";
+export type { PathSegment } from "./path.ts";
 export type { Builder } from "./builders/builder.ts";
 export type {
   JSONValue,
