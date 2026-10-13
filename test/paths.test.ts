@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   parse,
   parseAst,
+  parseWith,
   formatPath,
   JSONParseError,
+  type Builder,
   type ParseOptions,
   type PathSegment,
 } from "../src/index.ts";
@@ -102,10 +104,40 @@ test("path state does not leak between parses", () => {
   assertPath("y", []);
 });
 
-test("non-syntax errors are not wrapped", () => {
-  const deep = "[".repeat(200_000) + "]".repeat(200_000);
+test("errors thrown by a builder are not wrapped", () => {
+  class BuilderError extends Error {}
+  const failing: Builder<null, null, null> = {
+    literal: () => null,
+    number: () => {
+      throw new BuilderError("rejected by builder");
+    },
+    string: () => null,
+    startArray: () => null,
+    addElement: () => {},
+    endArray: () => null,
+    startObject: () => null,
+    hasKey: () => false,
+    setProperty: () => {},
+    endObject: () => null,
+  };
   assert.throws(
-    () => parse(deep, { maxDepth: Infinity }),
-    (e: unknown) => e instanceof RangeError && !(e instanceof JSONParseError),
+    () => parseWith('{"a":[true,1]}', failing),
+    (e: unknown) => e instanceof BuilderError && !(e instanceof JSONParseError),
   );
+});
+
+test("formatPath abbreviates long paths", () => {
+  const path = Array.from({ length: 10 }, (_, i) => i);
+  assert.equal(formatPath(path, 10), "$[0][1][2][3][4][5][6][7][8][9]");
+  assert.equal(formatPath(path, 4), "$[0][1] ...6 more... [8][9]");
+  assert.equal(formatPath(path, 3), "$[0][1] ...7 more... [9]");
+  assert.equal(formatPath(["a", "b", "c"], 2), "$.a ...1 more... .c");
+});
+
+test("error message abbreviates deep paths but keeps the full path", () => {
+  const depth = 5000;
+  const error = failure("[".repeat(depth) + "x", { maxDepth: Infinity });
+  assert.equal(error.path.length, depth);
+  assert.ok(error.message.length < 200, error.message);
+  assert.match(error.message, /\.\.\.4984 more\.\.\./);
 });
