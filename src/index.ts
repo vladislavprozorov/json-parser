@@ -52,4 +52,5 @@ export type {
   LoneSurrogateMode,
   ProtoKeyMode,
   DuplicateKeyMode,
+  Dialect,
 } from "./options.ts";
