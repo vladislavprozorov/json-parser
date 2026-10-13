@@ -1,4 +1,14 @@
+import assert from "node:assert/strict";
 import type { JSONObject, JSONValue, ValueNode } from "../../src/index.ts";
+
+export function expectNode<T extends ValueNode["type"]>(
+  node: ValueNode | undefined,
+  type: T,
+): Extract<ValueNode, { type: T }> {
+  assert.ok(node, `expected ${type} node, got undefined`);
+  assert.equal(node.type, type);
+  return node as Extract<ValueNode, { type: T }>;
+}
 
 export function toValue(node: ValueNode): JSONValue {
   switch (node.type) {
