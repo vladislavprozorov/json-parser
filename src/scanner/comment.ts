@@ -1,11 +1,18 @@
 import { ParseFailure } from "../errors.ts";
-import { CH_SLASH, CH_STAR, isLineTerminator } from "./chars.ts";
+import { CH_CR, CH_LF, CH_SLASH, CH_STAR, isLineTerminator } from "./chars.ts";
 
-export function scanComment(text: string, start: number): number {
+const isLineBreak = (c: number): boolean => c === CH_LF || c === CH_CR;
+
+export function scanComment(
+  text: string,
+  start: number,
+  unicodeLineTerminators: boolean,
+): number {
   const kind = text.charCodeAt(start + 1);
   if (kind === CH_SLASH) {
+    const isEnd = unicodeLineTerminators ? isLineTerminator : isLineBreak;
     let pos = start + 2;
-    while (pos < text.length && !isLineTerminator(text.charCodeAt(pos))) pos++;
+    while (pos < text.length && !isEnd(text.charCodeAt(pos))) pos++;
     return pos;
   }
   if (kind === CH_STAR) {
