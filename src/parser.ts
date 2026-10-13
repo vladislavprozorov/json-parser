@@ -1,4 +1,4 @@
-import type { JSONArray, JSONObject, JSONValue } from "./types.ts";
+import type { Builder } from "./builders/builder.ts";
 import type { ResolvedOptions } from "./options.ts";
 import { JSONParseError } from "./errors.ts";
 import {
@@ -9,21 +9,27 @@ import {
   CH_RBRACKET,
   isWhitespace,
 } from "./scanner/chars.ts";
-import { scanNumber } from "./scanner/number.ts";
-import { scanString } from "./scanner/string.ts";
+import { numberValue, scanNumber } from "./scanner/number.ts";
+import { scanString, type ScannedString } from "./scanner/string.ts";
 
-export class Parser {
+export class Parser<Value, ArrayState, ObjectState> {
   private readonly text: string;
+  private readonly builder: Builder<Value, ArrayState, ObjectState>;
   private readonly options: ResolvedOptions;
   private pos = 0;
   private depth = 0;
 
-  constructor(text: string, options: ResolvedOptions) {
+  constructor(
+    text: string,
+    builder: Builder<Value, ArrayState, ObjectState>,
+    options: ResolvedOptions,
+  ) {
     this.text = text;
+    this.builder = builder;
     this.options = options;
   }
 
-  parse(): JSONValue {
+  parse(): Value {
     if (this.text.length > this.options.maxLength) {
       throw this.error(
         `Input length ${this.text.length} exceeds maxLength of ${this.options.maxLength}`,
@@ -39,7 +45,7 @@ export class Parser {
     return value;
   }
 
-  private parseValue(): JSONValue {
+  private parseValue(): Value {
     const ch = this.text[this.pos];
     switch (ch) {
       case "{":
@@ -73,22 +79,21 @@ export class Parser {
     }
   }
 
-  private parseArray(): JSONArray {
-    this.enter();
-    const result: JSONArray = [];
+  private parseArray(): Value {
+    const array = this.builder.startArray(this.enter());
     this.skipWhitespace();
     if (this.text.charCodeAt(this.pos) === CH_RBRACKET) {
-      return this.leave(result);
+      return this.builder.endArray(array, this.leave());
     }
     for (;;) {
       this.skipWhitespace();
-      result.push(this.parseValue());
+      this.builder.addElement(array, this.parseValue());
       this.skipWhitespace();
       const c = this.text.charCodeAt(this.pos);
       if (c === CH_COMMA) {
         this.pos++;
       } else if (c === CH_RBRACKET) {
-        return this.leave(result);
+        return this.builder.endArray(array, this.leave());
       } else {
         throw this.error(
           `Expected "," or "]" in array, got ${this.describeCurrent()}`,
@@ -97,12 +102,11 @@ export class Parser {
     }
   }
 
-  private parseObject(): JSONObject {
-    this.enter();
-    const result: JSONObject = {};
+  private parseObject(): Value {
+    const object = this.builder.startObject(this.enter());
     this.skipWhitespace();
     if (this.text.charCodeAt(this.pos) === CH_RBRACE) {
-      return this.leave(result);
+      return this.builder.endObject(object, this.leave());
     }
     for (;;) {
       this.skipWhitespace();
@@ -112,7 +116,7 @@ export class Parser {
         );
       }
       const keyStart = this.pos;
-      const key = this.parseString();
+      const key = this.scanString();
       this.skipWhitespace();
       if (this.text.charCodeAt(this.pos) !== CH_COLON) {
         throw this.error(
@@ -122,13 +126,13 @@ export class Parser {
       this.pos++;
       this.skipWhitespace();
       const value = this.parseValue();
-      this.setProperty(result, key, value, keyStart);
+      this.addMember(object, key.value, keyStart, key.end, value);
       this.skipWhitespace();
       const c = this.text.charCodeAt(this.pos);
       if (c === CH_COMMA) {
         this.pos++;
       } else if (c === CH_RBRACE) {
-        return this.leave(result);
+        return this.builder.endObject(object, this.leave());
       } else {
         throw this.error(
           `Expected "," or "}" in object, got ${this.describeCurrent()}`,
@@ -137,14 +141,14 @@ export class Parser {
     }
   }
 
-  private setProperty(
-    target: JSONObject,
+  private addMember(
+    object: ObjectState,
     key: string,
-    value: JSONValue,
     keyStart: number,
+    keyEnd: number,
+    value: Value,
   ): void {
-    const isProto = key === "__proto__";
-    if (isProto) {
+    if (key === "__proto__") {
       switch (this.options.protoKey) {
         case "ignore":
           return;
@@ -152,7 +156,7 @@ export class Parser {
           throw this.error('Forbidden key "__proto__"', keyStart);
       }
     }
-    if (Object.hasOwn(target, key)) {
+    if (this.builder.hasKey(object, key)) {
       switch (this.options.duplicateKeys) {
         case "first":
           return;
@@ -160,69 +164,56 @@ export class Parser {
           throw this.error(`Duplicate key ${JSON.stringify(key)}`, keyStart);
       }
     }
-    if (isProto) {
-      Object.defineProperty(target, key, {
-        value,
-        writable: true,
-        enumerable: true,
-        configurable: true,
-      });
-    } else {
-      target[key] = value;
-    }
+    this.builder.setProperty(object, key, keyStart, keyEnd, value);
   }
 
-  private enter(): void {
+  private enter(): number {
     if (this.depth >= this.options.maxDepth) {
       throw this.error(
         `Maximum nesting depth of ${this.options.maxDepth} exceeded`,
       );
     }
     this.depth++;
-    this.pos++;
+    return this.pos++;
   }
 
-  private leave<T>(value: T): T {
+  private leave(): number {
     this.depth--;
-    this.pos++;
-    return value;
+    return ++this.pos;
   }
 
-  private parseString(): string {
-    const { end, value } = scanString(
+  private parseString(): Value {
+    const start = this.pos;
+    const { value, end } = this.scanString();
+    return this.builder.string(value, start, end);
+  }
+
+  private scanString(): ScannedString {
+    const scanned = scanString(
       this.text,
       this.pos,
       this.options.loneSurrogates,
     );
-    this.pos = end;
-    return value;
+    this.pos = scanned.end;
+    return scanned;
   }
 
-  private parseNumber(): JSONValue {
+  private parseNumber(): Value {
     const start = this.pos;
     const { end, isInteger } = scanNumber(this.text, start);
     this.pos = end;
-
     const raw = this.text.slice(start, end);
-    const value = Number(raw);
-
-    if (isInteger && !Number.isSafeInteger(value)) {
-      switch (this.options.largeIntegers) {
-        case "bigint":
-          return BigInt(raw);
-        case "string":
-          return raw;
-      }
-    }
-    return value;
+    const value = numberValue(raw, isInteger, this.options.largeIntegers);
+    return this.builder.number(value, raw, start, end);
   }
 
-  private parseLiteral<T extends JSONValue>(word: string, value: T): T {
-    if (this.text.startsWith(word, this.pos)) {
-      this.pos += word.length;
-      return value;
+  private parseLiteral(word: string, value: boolean | null): Value {
+    if (!this.text.startsWith(word, this.pos)) {
+      throw this.error(`Invalid literal, expected "${word}"`);
     }
-    throw this.error(`Invalid literal, expected "${word}"`);
+    const start = this.pos;
+    this.pos += word.length;
+    return this.builder.literal(value, start, this.pos);
   }
 
   private skipWhitespace(): void {
