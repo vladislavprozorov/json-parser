@@ -1,4 +1,4 @@
-import { JSONParseError } from "../errors.ts";
+import { ParseFailure } from "../errors.ts";
 import type { LargeIntegerMode } from "../options.ts";
 import type { NumberValue } from "../types.ts";
 import {
@@ -28,12 +28,12 @@ export function scanNumber(text: string, start: number): ScannedNumber {
   if (c === CH_0) {
     pos++;
     if (isDigit(text.charCodeAt(pos))) {
-      throw new JSONParseError("Leading zeros are not allowed", text, pos);
+      throw new ParseFailure("Leading zeros are not allowed", pos);
     }
   } else if (c >= CH_1 && c <= CH_9) {
     pos = skipDigits(text, pos + 1);
   } else {
-    throw new JSONParseError("Expected digit", text, pos);
+    throw new ParseFailure("Expected digit", pos);
   }
 
   let isInteger = true;
@@ -42,7 +42,7 @@ export function scanNumber(text: string, start: number): ScannedNumber {
     isInteger = false;
     pos++;
     if (!isDigit(text.charCodeAt(pos))) {
-      throw new JSONParseError("Expected digit after decimal point", text, pos);
+      throw new ParseFailure("Expected digit after decimal point", pos);
     }
     pos = skipDigits(text, pos + 1);
   }
@@ -53,7 +53,7 @@ export function scanNumber(text: string, start: number): ScannedNumber {
     c = text.charCodeAt(++pos);
     if (c === CH_PLUS || c === CH_MINUS) pos++;
     if (!isDigit(text.charCodeAt(pos))) {
-      throw new JSONParseError("Expected digit in exponent", text, pos);
+      throw new ParseFailure("Expected digit in exponent", pos);
     }
     pos = skipDigits(text, pos + 1);
   }
