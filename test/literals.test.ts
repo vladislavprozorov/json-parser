@@ -45,7 +45,7 @@ test("reports line and column", () => {
 
 test("describes invisible characters by code point", () => {
   assert.throws(
-    () => parse("﻿{}"),
+    () => parse("\uFEFF{}"),
     (e: unknown) => e instanceof JSONParseError && /U\+FEFF/.test(e.message),
   );
   assert.throws(
