@@ -237,10 +237,11 @@ export class Parser<Value, ArrayState, ObjectState> {
 
   private parseNumber(): Value {
     const start = this.pos;
-    const { end, isInteger } = scanNumber(this.text, start);
+    const scanned = scanNumber(this.text, start);
+    const { end } = scanned;
     this.pos = end;
     const raw = this.text.slice(start, end);
-    const value = numberValue(raw, isInteger, this.options.largeIntegers);
+    const value = numberValue(raw, scanned, this.options.largeIntegers);
     return this.builder.number(value, raw, start, end);
   }
 
