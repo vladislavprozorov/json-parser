@@ -1,4 +1,6 @@
 import { JSONParseError } from "../errors.ts";
+import type { LargeIntegerMode } from "../options.ts";
+import type { NumberValue } from "../types.ts";
 import {
   CH_0,
   CH_1,
@@ -45,7 +47,6 @@ export function scanNumber(text: string, start: number): ScannedNumber {
     pos = skipDigits(text, pos + 1);
   }
 
-  // экспонента
   c = text.charCodeAt(pos);
   if (c === CH_LOWER_E || c === CH_UPPER_E) {
     isInteger = false;
@@ -58,6 +59,23 @@ export function scanNumber(text: string, start: number): ScannedNumber {
   }
 
   return { end: pos, isInteger };
+}
+
+export function numberValue(
+  raw: string,
+  isInteger: boolean,
+  largeIntegers: LargeIntegerMode,
+): NumberValue {
+  const value = Number(raw);
+  if (!isInteger || Number.isSafeInteger(value)) return value;
+  switch (largeIntegers) {
+    case "number":
+      return value;
+    case "bigint":
+      return BigInt(raw);
+    case "string":
+      return raw;
+  }
 }
 
 function skipDigits(text: string, pos: number): number {
