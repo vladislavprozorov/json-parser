@@ -3,6 +3,7 @@ import type { ResolvedOptions } from "./options.ts";
 import { JSONParseError } from "./errors.ts";
 import { isWhitespace } from "./scanner/chars.ts";
 import { scanNumber } from "./scanner/number.ts";
+import { scanString } from "./scanner/string.ts";
 
 export class Parser {
   private readonly text: string;
@@ -33,6 +34,8 @@ export class Parser {
         return this.parseLiteral("false", false);
       case "n":
         return this.parseLiteral("null", null);
+      case '"':
+        return this.parseString();
       case "-":
       case "0":
       case "1":
@@ -68,6 +71,16 @@ export class Parser {
           return raw;
       }
     }
+    return value;
+  }
+
+  private parseString(): string {
+    const { end, value } = scanString(
+      this.text,
+      this.pos,
+      this.options.loneSurrogates,
+    );
+    this.pos = end;
     return value;
   }
 
