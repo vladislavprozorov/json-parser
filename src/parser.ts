@@ -255,13 +255,13 @@ export class Parser<Value, ArrayState, ObjectState> {
 
   private skipWhitespace(): void {
     const { text } = this;
-    const { comments } = this.options.syntax;
+    const { comments, json5 } = this.options.syntax;
     for (;;) {
       const c = text.charCodeAt(this.pos);
       if (isWhitespace(c)) {
         this.pos++;
       } else if (c === CH_SLASH && comments) {
-        this.pos = scanComment(text, this.pos);
+        this.pos = scanComment(text, this.pos, json5);
       } else {
         return;
       }
