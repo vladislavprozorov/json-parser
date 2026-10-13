@@ -40,7 +40,7 @@ export const DEFAULT_MAX_DEPTH = 1000;
 
 export function resolveOptions(options: ParseOptions = {}): ResolvedOptions {
   return {
-    syntax: SYNTAX[options.dialect ?? "json"],
+    syntax: syntaxOf(options.dialect ?? "json"),
     largeIntegers: options.largeIntegers ?? "number",
     loneSurrogates: options.loneSurrogates ?? "allow",
     maxDepth: limit("maxDepth", options.maxDepth ?? DEFAULT_MAX_DEPTH),
@@ -48,6 +48,15 @@ export function resolveOptions(options: ParseOptions = {}): ResolvedOptions {
     protoKey: options.protoKey ?? "define",
     duplicateKeys: options.duplicateKeys ?? "last",
   };
+}
+
+function syntaxOf(dialect: Dialect): SyntaxFeatures {
+  if (!Object.hasOwn(SYNTAX, dialect)) {
+    throw new RangeError(
+      `dialect must be one of ${Object.keys(SYNTAX).join(", ")}, got ${dialect}`,
+    );
+  }
+  return SYNTAX[dialect];
 }
 
 function limit(name: string, value: number): number {
