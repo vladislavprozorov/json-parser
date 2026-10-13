@@ -8,8 +8,10 @@ import {
   CH_QUOTE,
   CH_RBRACE,
   CH_RBRACKET,
+  CH_SLASH,
   isWhitespace,
 } from "./scanner/chars.ts";
+import { scanComment } from "./scanner/comment.ts";
 import { numberValue, scanNumber } from "./scanner/number.ts";
 import { scanString, type ScannedString } from "./scanner/string.ts";
 
@@ -112,6 +114,9 @@ export class Parser<Value, ArrayState, ObjectState> {
       const c = this.text.charCodeAt(this.pos);
       if (c === CH_COMMA) {
         this.pos++;
+        if (this.closesAfterComma(CH_RBRACKET)) {
+          return this.builder.endArray(array, this.leave());
+        }
       } else if (c === CH_RBRACKET) {
         return this.builder.endArray(array, this.leave());
       } else {
@@ -156,6 +161,9 @@ export class Parser<Value, ArrayState, ObjectState> {
       const c = this.text.charCodeAt(this.pos);
       if (c === CH_COMMA) {
         this.pos++;
+        if (this.closesAfterComma(CH_RBRACE)) {
+          return this.builder.endObject(object, this.leave());
+        }
       } else if (c === CH_RBRACE) {
         return this.builder.endObject(object, this.leave());
       } else {
@@ -188,6 +196,12 @@ export class Parser<Value, ArrayState, ObjectState> {
       }
     }
     return true;
+  }
+
+  private closesAfterComma(close: number): boolean {
+    if (!this.options.syntax.trailingCommas) return false;
+    this.skipWhitespace();
+    return this.text.charCodeAt(this.pos) === close;
   }
 
   private enter(): number {
@@ -240,7 +254,18 @@ export class Parser<Value, ArrayState, ObjectState> {
   }
 
   private skipWhitespace(): void {
-    while (isWhitespace(this.text.charCodeAt(this.pos))) this.pos++;
+    const { text } = this;
+    const { comments } = this.options.syntax;
+    for (;;) {
+      const c = text.charCodeAt(this.pos);
+      if (isWhitespace(c)) {
+        this.pos++;
+      } else if (c === CH_SLASH && comments) {
+        this.pos = scanComment(text, this.pos);
+      } else {
+        return;
+      }
+    }
   }
 
   private describeCurrent(): string {
