@@ -42,3 +42,14 @@ test("reports line and column", () => {
     assert.equal(e.column, 3);
   }
 });
+
+test("describes invisible characters by code point", () => {
+  assert.throws(
+    () => parse("﻿{}"),
+    (e: unknown) => e instanceof JSONParseError && /U\+FEFF/.test(e.message),
+  );
+  assert.throws(
+    () => parse("1\u0000"),
+    (e: unknown) => e instanceof JSONParseError && /U\+0000/.test(e.message),
+  );
+});
