@@ -21,15 +21,15 @@ export class LineIndex {
 
   position(offset: number): Position {
     const line = this.lineAt(offset);
-    return { line: line + 1, column: offset - this.starts[line]! + 1, offset };
+    return { line: line + 1, column: offset - this.starts[line] + 1, offset };
   }
 
   private lineAt(offset: number): number {
     const { starts } = this;
     const cached = this.last;
     if (
-      offset >= starts[cached]! &&
-      (cached + 1 === starts.length || offset < starts[cached + 1]!)
+      offset >= starts[cached] &&
+      (cached + 1 === starts.length || offset < starts[cached + 1])
     ) {
       return cached;
     }
@@ -37,7 +37,7 @@ export class LineIndex {
     let high = starts.length - 1;
     while (low < high) {
       const mid = (low + high + 1) >>> 1;
-      if (starts[mid]! <= offset) low = mid;
+      if (starts[mid] <= offset) low = mid;
       else high = mid - 1;
     }
     this.last = low;
