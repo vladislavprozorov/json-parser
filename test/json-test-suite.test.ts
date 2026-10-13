@@ -1,7 +1,13 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { parse, JSONParseError, type JSONValue } from "../src/index.ts";
+import {
+  parse,
+  parseAst,
+  JSONParseError,
+  type JSONValue,
+} from "../src/index.ts";
+import { toValue } from "./support/ast.ts";
 
 const dir = new URL("../vendor/JSONTestSuite/test_parsing/", import.meta.url);
 
@@ -33,7 +39,9 @@ describe("JSONTestSuite: y_ must be accepted", () => {
   for (const name of files.filter((f) => f.startsWith("y_"))) {
     test(name, () => {
       const text = strictUtf8.decode(read(name));
-      assert.deepEqual(parse(text), JSON.parse(text));
+      const expected = JSON.parse(text);
+      assert.deepEqual(parse(text), expected);
+      assert.deepEqual(toValue(parseAst(text)), expected);
     });
   }
 });
@@ -48,6 +56,7 @@ describe("JSONTestSuite: n_ must be rejected", () => {
         return;
       }
       assert.throws(() => parse(text), JSONParseError);
+      assert.throws(() => parseAst(text), JSONParseError);
     });
   }
 });
