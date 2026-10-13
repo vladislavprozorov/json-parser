@@ -1,4 +1,4 @@
-import { JSONParseError } from "../errors.ts";
+import { ParseFailure } from "../errors.ts";
 import type { LoneSurrogateMode } from "../options.ts";
 import {
   CH_BACKSLASH,
@@ -83,18 +83,17 @@ export function scanString(
                 break;
               }
             }
-            value += lone(code, text, escapeStart, loneSurrogates);
+            value += lone(code, escapeStart, loneSurrogates);
           } else if (isLowSurrogate(code)) {
-            value += lone(code, text, escapeStart, loneSurrogates);
+            value += lone(code, escapeStart, loneSurrogates);
           } else {
             value += String.fromCharCode(code);
           }
           break;
         }
         default:
-          throw new JSONParseError(
+          throw new ParseFailure(
             Number.isNaN(e) ? "Unterminated string" : "Invalid escape sequence",
-            text,
             escapeStart + 1,
           );
       }
@@ -103,14 +102,10 @@ export function scanString(
     }
 
     if (Number.isNaN(c)) {
-      throw new JSONParseError("Unterminated string", text, pos);
+      throw new ParseFailure("Unterminated string", pos);
     }
     if (c < CH_SPACE) {
-      throw new JSONParseError(
-        "Unescaped control character in string",
-        text,
-        pos,
-      );
+      throw new ParseFailure("Unescaped control character in string", pos);
     }
     pos++;
   }
@@ -121,9 +116,8 @@ function readHex4(text: string, pos: number): number {
   for (let i = 0; i < 4; i++) {
     const h = hexValue(text.charCodeAt(pos + i));
     if (h < 0) {
-      throw new JSONParseError(
+      throw new ParseFailure(
         "Expected 4 hex digits in unicode escape",
-        text,
         pos + i,
       );
     }
@@ -132,18 +126,13 @@ function readHex4(text: string, pos: number): number {
   return code;
 }
 
-function lone(
-  code: number,
-  text: string,
-  position: number,
-  mode: LoneSurrogateMode,
-): string {
+function lone(code: number, position: number, mode: LoneSurrogateMode): string {
   switch (mode) {
     case "allow":
       return String.fromCharCode(code);
     case "replace":
       return "�";
     case "error":
-      throw new JSONParseError("Lone surrogate in string", text, position);
+      throw new ParseFailure("Lone surrogate in string", position);
   }
 }
