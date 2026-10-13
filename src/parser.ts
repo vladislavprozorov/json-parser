@@ -230,8 +230,12 @@ export class Parser {
   }
 
   private describeCurrent(): string {
-    const ch = this.text[this.pos];
-    return ch === undefined ? "end of input" : `character "${ch}"`;
+    const code = this.text.charCodeAt(this.pos);
+    if (Number.isNaN(code)) return "end of input";
+    if (code >= 0x21 && code <= 0x7e) {
+      return `character "${String.fromCharCode(code)}"`;
+    }
+    return `character U+${code.toString(16).toUpperCase().padStart(4, "0")}`;
   }
 
   private error(message: string, position = this.pos): JSONParseError {
