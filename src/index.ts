@@ -8,4 +8,8 @@ export function parse(text: string, options?: ParseOptions): JSONValue {
 
 export { JSONParseError } from "./errors.ts";
 export type { JSONValue } from "./types.ts";
-export type { ParseOptions, LargeIntegerMode } from "./options.ts";
+export type {
+  ParseOptions,
+  LargeIntegerMode,
+  LoneSurrogateMode,
+} from "./options.ts";
