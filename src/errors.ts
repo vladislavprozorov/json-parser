@@ -11,6 +11,8 @@ export class ParseFailure extends Error {
   }
 }
 
+const MESSAGE_PATH_SEGMENTS = 16;
+
 export class JSONParseError extends SyntaxError {
   readonly reason: string;
   readonly position: number;
@@ -26,7 +28,7 @@ export class JSONParseError extends SyntaxError {
   ) {
     const { line, column } = new LineIndex(source).position(position);
     super(
-      `${reason} at ${formatPath(path)}, line ${line}, column ${column} (position ${position})`,
+      `${reason} at ${formatPath(path, MESSAGE_PATH_SEGMENTS)}, line ${line}, column ${column} (position ${position})`,
     );
     this.name = "JSONParseError";
     this.reason = reason;
